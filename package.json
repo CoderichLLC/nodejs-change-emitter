@@ -1,0 +1,23 @@
+{
+  "name": "@coderich/state-change",
+  "version": "0.0.0",
+  "main": "src/State.js",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "src",
+    "!__mocks__"
+  ],
+  "scripts": {
+    "test": "jest",
+    "lint": "eslint ./",
+    "dev": "coderich-dev"
+  },
+  "dependencies": {
+    "@coderich/util": "^1.2.1"
+  },
+  "devDependencies": {
+    "@coderich/dev": "^0.3.3"
+  }
+}
