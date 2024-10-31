@@ -1,81 +1,83 @@
-const State = require('../src/State');
+const ChangeEmitter = require('../src/ChangeEmitter');
 
-describe('State', () => {
-  let $;
-
-  const state = new State({
+describe('ChangeEmitter', () => {
+  const { proxy, emitter } = new ChangeEmitter({
     turn: 0,
     nested: {
       attribute: 'value',
       deeply: { attribute: 'value' },
-      array: [1, 'two', { three: 'three' }],
+      array: [1, 'two', { three: 'three', four: 4 }],
       map: new Map(),
       date: new Date(),
     },
   });
 
-  test('state.turn', (done) => {
-    $ = state.$((event) => {
+  test('proxy.turn', (done) => {
+    emitter.once('change', (event) => {
       expect(event).toEqual({ value: 0, path: ['turn'], assign: 1 });
-    }); state.turn++; $();
+    }); proxy.turn++;
 
-    $ = state.$((event) => {
+    emitter.once('change', (event) => {
       expect(event).toEqual({ value: 1, path: ['turn'], assign: 10 });
-    }); state.turn = 10; $();
+    }); proxy.turn = 10;
 
-    $ = state.$((event) => {
+    emitter.once('change', (event) => {
       expect(event).toEqual({ value: 10, path: ['turn'], assign: undefined });
       done();
-    }); delete state.turn; $();
+    }); delete proxy.turn;
   });
 
-  test('state.newAttribute', (done) => {
-    $ = state.$((event) => {
+  test('proxy.newAttribute', (done) => {
+    emitter.once('change', (event) => {
       expect(event).toEqual({ value: undefined, path: ['newAttribute'], assign: 5 });
       done();
-    }); state.newAttribute = 5; $();
+    }); proxy.newAttribute = 5;
   });
 
-  test('state.nested.attribute', (done) => {
-    $ = state.$((event) => {
+  test('proxy.nested.attribute', (done) => {
+    emitter.once('change', (event) => {
       expect(event).toEqual({ value: 'value', path: ['nested', 'attribute'], assign: 'rich' });
-    }); state.nested.attribute = 'rich'; $();
+    }); proxy.nested.attribute = 'rich';
 
-    $ = state.$((event) => {
+    emitter.once('change', (event) => {
       expect(event).toEqual({ value: 'value', path: ['nested', 'deeply', 'attribute'], assign: 1 });
-    }); state.nested.deeply.attribute = 1; $();
+    }); proxy.nested.deeply.attribute = 1;
 
-    $ = state.$((event) => {
+    emitter.once('change', (event) => {
       expect(event).toEqual({ value: undefined, path: ['nested', 'deeply', 'newAttribute'], assign: { another: { level: { deep: 1 } } } });
-    }); state.nested.deeply.newAttribute = { another: { level: { deep: 1 } } }; $();
+    }); proxy.nested.deeply.newAttribute = { another: { level: { deep: 1 } } };
 
-    $ = state.$((event) => {
+    emitter.once('change', (event) => {
       expect(event).toEqual({ value: 1, path: ['nested', 'deeply', 'newAttribute', 'another', 'level', 'deep'], assign: -4 });
+    }); proxy.nested.deeply.newAttribute.another.level.deep -= 5;
+
+    emitter.once('change', (event) => {
+      expect(event).toEqual({ value: proxy.nested.array[2].four, path: ['nested', 'array', 2, 'four'], assign: 5 });
       done();
-    }); state.nested.deeply.newAttribute.another.level.deep -= 5; $();
+    }); proxy.nested.array[2].four++;
   });
 
-  test('state.nested.{array|map|date}', (done) => {
-    $ = state.$((event) => {
-      expect(event).toEqual({ value: [1, 'two', { three: 'three' }], path: ['nested', 'array'], apply: ['push', 'anew', 'nelly'] });
-    }); state.nested.array.push('anew', 'nelly'); $();
-    expect(state.nested.array.length).toBe(5);
+  test('proxy.nested.{array|map|date} functions', (done) => {
+    emitter.once('change', (event) => {
+      expect(event).toEqual({ value: proxy.nested.array, path: ['nested', 'array'], apply: ['push', 'anew', 'nelly'] });
+    }); proxy.nested.array.push('anew', 'nelly');
+    expect(proxy.nested.array.length).toBe(5);
 
-    $ = state.$((event) => {
+    emitter.once('change', (event) => {
       expect(event).toEqual({ value: expect.any(Map), path: ['nested', 'map'], apply: ['set', 'key', 'value'] });
-    }); state.nested.map.set('key', 'value'); $();
-    expect(state.nested.map.size).toBe(1);
+    }); proxy.nested.map.set('key', 'value');
+    expect(proxy.nested.map.size).toBe(1);
 
-    $ = state.$((event) => {
+    emitter.once('change', (event) => {
       expect(event).toEqual({ value: expect.any(Date), path: ['nested', 'date'], apply: ['setHours', 0, 0, 0, 0] });
       done();
-    }); state.nested.date.setHours(0, 0, 0, 0); $();
+    }); proxy.nested.date.setHours(0, 0, 0, 0);
   });
 
   test('Object.assign', () => {
-    $ = state.$((event) => {
+    emitter.on('change', (event) => {
       console.log(event);
       // expect(event).toEqual({ value: [1, 'two', { three: 'three' }], path: ['nested', 'array'], apply: ['push', 'anew', 'nelly'] });
-    }); Object.assign(state.nested, { attribute: 'changed', anotherAttribute: {} }); $();
+    }); Object.assign(proxy.nested, { attribute: 'changed', anotherAttribute: {} });
   });
 });
