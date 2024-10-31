@@ -1,5 +1,3 @@
-const { isPlainObject } = require('@coderich/util');
-
 module.exports = class State {
   #path;
   #listeners = [];
@@ -7,58 +5,38 @@ module.exports = class State {
   constructor(state = {}, path = []) {
     this.#path = path;
 
-    const $state = this.#iterate(state);
+    const needsContext = State.needsContext(state);
 
-    const subscribe = Object.defineProperties(fn => this.#subscribe(fn), {
-      toJSON: {
-        value: () => $state.toJSON?.apply($state) ?? $state,
-        // value: () => $state.toJSON?.() ?? $state,
-        configurable: true,
-      },
+    const $state = Object.defineProperty(this.#iterate(state), '$', {
+      value: (...args) => this.#subscribe(...args),
+      configurable: true,
     });
 
-    return new Proxy(subscribe, {
+    return new Proxy($state, {
       get: (target, prop, rec) => {
-        target = prop === 'toJSON' ? subscribe : $state;
-        return Reflect.get(target, prop, rec);
-        // const value = Reflect.get(target, prop, rec);
-        // return typeof value === 'function' && value.bind ? value.bind($state) : value;
+        let value = Reflect.get(target, prop, rec);
+        if (typeof value !== 'function' || typeof prop === 'symbol') return value;
+        return needsContext ? (...args) => {
+          value = value.apply($state, args);
+          if (/^(set|clear|delete|add)/.test(prop)) this.#broadcast({ prev: target, path, value, method: prop });
+          return value;
+        } : value;
       },
       set: (target, prop, value) => {
-        this.#broadcast({ prev: $state[prop], path: path.concat(prop), value });
-        return Reflect.set($state, prop, this.#resolve(path.concat(prop), value));
+        this.#broadcast({ prev: target[prop], path: path.concat(prop), value });
+        return Reflect.set(target, prop, this.#resolve(path.concat(prop), value));
       },
-      // apply: (target, thisArg, args) => {
-      //   return target.apply($state, args);
-      //   // console.log(thisArg);
-      //   // return Reflect.apply(target, thisArg, args);
-      // },
       deleteProperty: (target, prop, value) => {
-        this.#broadcast({ prev: $state[prop], path: path.concat(prop), value });
-        return Reflect.deleteProperty($state, prop);
-      },
-      has: (target, prop) => {
-        return Reflect.has($state, prop);
-      },
-      ownKeys: (target) => {
-        return Reflect.ownKeys($state);
-      },
-      getPrototypeOf: (target) => {
-        return Reflect.getPrototypeOf($state);
-      },
-      getOwnPropertyDescriptor: (target, prop) => {
-        return Reflect.getOwnPropertyDescriptor($state, prop);
+        this.#broadcast({ prev: target[prop], path: path.concat(prop), value });
+        return Reflect.deleteProperty(target, prop);
       },
     });
-  }
-
-  #call(value, $this) {
   }
 
   #resolve(key, value) {
     if (typeof value === 'object') {
       value = new State(value, key);
-      value(event => this.#broadcast(event));
+      value.$(event => this.#broadcast(event));
     }
     return value;
   }
@@ -66,7 +44,7 @@ module.exports = class State {
   #iterate(mixed) {
     return State.map(mixed, (value, i) => {
       if (Array.isArray(value)) return this.#resolve(this.#path.concat(i), value);
-      if (isPlainObject(value)) return this.#transform(value);
+      if (typeof value === 'object') return this.#transform(value);
       return value;
     });
   }
@@ -92,5 +70,26 @@ module.exports = class State {
     if (mixed == null) return mixed;
     if (Array.isArray(mixed)) return mixed.map((...args) => fn(...args));
     return fn(mixed);
+  }
+
+  static needsContext(obj) {
+    // Handle null and non-objects
+    if (obj === null || typeof obj !== 'object') return false;
+
+    // Check specific types and their methods
+    switch (Object.prototype.toString.call(obj)) {
+      case '[object Array]': return false; // Array methods don't require context (e.g., push, pop)
+      case '[object String]': case '[object Number]': case '[object Boolean]': return false; // Primatives are context-independent
+      case '[object Math]': case '[object JSON]': return false; // Static methods on Math and JSON are context-independent
+      case '[object Symbol]': return false; // Static methods are context-independent
+      case '[object Function]': return false; // Functions are generally context-independent if not defined as methods
+
+      case '[object Date]': return true; // Date methods like setHours require context
+      case '[object RegExp]': return true; // RegExp methods like exec require context
+      case '[object Object]': return true; // Generic objects may have methods requiring context
+      case '[object Set]': case '[object Map]': case '[object WeakSet]': case '[object WeakMap]': return true; // Methods can depend on the context
+
+      default: return true; // Fallback for other object types (e.g., custom classes)
+    }
   }
 };
