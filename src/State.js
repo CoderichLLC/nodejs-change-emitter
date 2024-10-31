@@ -1,11 +1,35 @@
+const EventEmitter = require('events');
+
+const typeMap = {
+  '[object Array]': 'Array',
+  '[object Date]': 'Date',
+  '[object RegExp]': 'RegExp',
+  '[object Set]': 'Set',
+  '[object Map]': 'Map',
+  '[object WeakMap]': 'WeakMap',
+  '[object WeakSet]': 'WeakSet',
+  '[object Object]': 'Object',
+  '[object Error]': 'Error',
+  '[object Promise]': 'Promise',
+  '[object Symbol]': 'Symbol',
+  '[object String]': 'String',
+  '[object Number]': 'Number',
+  '[object Boolean]': 'Boolean',
+  '[object BigInt]': 'BigInt',
+  '[object Function]': 'Function',
+  '[object Math]': 'Math',
+  '[object JSON]': 'JSON',
+  '[object Intl]': 'Intl',
+};
+
 module.exports = class State {
   #path;
+  #emitter;
   #listeners = [];
 
-  constructor(state = {}, path = []) {
+  constructor(state = {}, path = [], emitter = new EventEmitter()) {
     this.#path = path;
-
-    const needsContext = State.needsContext(state);
+    this.#emitter = emitter;
 
     const $state = Object.defineProperty(this.#iterate(state), '$', {
       value: (...args) => this.#subscribe(...args),
@@ -14,24 +38,19 @@ module.exports = class State {
 
     return new Proxy($state, {
       get: (target, prop, rec) => {
-        const value = Reflect.get(target, prop, rec);
+        const value = Reflect.get(target, prop, $state);
         if (typeof value !== 'function' || typeof prop === 'symbol') return value;
-        if (/^(set|clear|delete|add)/.test(prop)) this.#broadcast({ prev: target, path, value, method: prop });
-        return value.bind($state);
-
-        // if (typeof value !== 'function' || typeof prop === 'symbol') return value;
-        // return needsContext ? (...args) => {
-        //   value = value.apply($state, args);
-        //   if (/^(set|clear|delete|add)/.test(prop)) this.#broadcast({ prev: target, path, value, method: prop });
-        //   return value;
-        // } : value;
+        return (...args) => {
+          if (/^(push|pop|shift|unshift|splice|sort|reverse|add|set|clear|delete|remove)/.test(prop)) this.#broadcast({ value: target, path, apply: [prop, ...args] });
+          return value.apply($state, args);
+        };
       },
       set: (target, prop, value) => {
-        this.#broadcast({ prev: target[prop], path: path.concat(prop), value });
+        this.#broadcast({ value: target[prop], path: path.concat(prop), assign: value });
         return Reflect.set(target, prop, this.#resolve(path.concat(prop), value));
       },
       deleteProperty: (target, prop, value) => {
-        this.#broadcast({ prev: target[prop], path: path.concat(prop), value });
+        this.#broadcast({ value: target[prop], path: path.concat(prop), assign: value });
         return Reflect.deleteProperty(target, prop);
       },
     });
@@ -74,6 +93,13 @@ module.exports = class State {
     if (mixed == null) return mixed;
     if (Array.isArray(mixed)) return mixed.map((...args) => fn(...args));
     return fn(mixed);
+  }
+
+  static getType(obj) {
+    if (obj === null) return 'null';
+    if (typeof obj === 'undefined') return 'undefined';
+    if (typeof obj === 'function') return 'Function';
+    return typeMap[Object.prototype.toString.call(obj)];
   }
 
   static needsContext(obj) {
