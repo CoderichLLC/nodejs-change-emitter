@@ -14,13 +14,17 @@ module.exports = class State {
 
     return new Proxy($state, {
       get: (target, prop, rec) => {
-        let value = Reflect.get(target, prop, rec);
+        const value = Reflect.get(target, prop, rec);
         if (typeof value !== 'function' || typeof prop === 'symbol') return value;
-        return needsContext ? (...args) => {
-          value = value.apply($state, args);
-          if (/^(set|clear|delete|add)/.test(prop)) this.#broadcast({ prev: target, path, value, method: prop });
-          return value;
-        } : value;
+        if (/^(set|clear|delete|add)/.test(prop)) this.#broadcast({ prev: target, path, value, method: prop });
+        return value.bind($state);
+
+        // if (typeof value !== 'function' || typeof prop === 'symbol') return value;
+        // return needsContext ? (...args) => {
+        //   value = value.apply($state, args);
+        //   if (/^(set|clear|delete|add)/.test(prop)) this.#broadcast({ prev: target, path, value, method: prop });
+        //   return value;
+        // } : value;
       },
       set: (target, prop, value) => {
         this.#broadcast({ prev: target[prop], path: path.concat(prop), value });
