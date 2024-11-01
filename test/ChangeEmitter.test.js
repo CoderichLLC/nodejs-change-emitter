@@ -115,4 +115,19 @@ describe('ChangeEmitter', () => {
 
     proxy.nested.hero.hp = 20;
   });
+
+  test('Actors', (done) => {
+    emitter.once('nested/attribute', (event) => {
+      expect(event).toEqual({ actor: proxy.nested.deeply, oldVal: 'changed', newVal: 'acted', path: ['nested', 'attribute'] });
+    }); proxy.nested.deeply.$(proxy.nested).attribute = 'acted';
+
+    emitter.once('nested/attribute', (event) => {
+      expect(event).toEqual({ oldVal: 'acted', newVal: 'boring', path: ['nested', 'attribute'] });
+    }); proxy.nested.attribute = 'boring';
+
+    emitter.once('nested/map', (event) => {
+      expect(event).toEqual({ actor: proxy.nested.date, oldVal: expect.any(Map), newVal: expect.any(Map), path: ['nested', 'map'], apply: ['set', 'actor', 'date'] });
+      done();
+    }); proxy.nested.date.$(proxy.nested.map).set('actor', 'date');
+  });
 });

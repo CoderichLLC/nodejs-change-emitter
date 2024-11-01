@@ -1,32 +1,37 @@
+const $actor = Symbol('actor');
 const $pathmatch = Symbol.for('pathmatch');
 
+function act(o) {
+  return Object.defineProperty(o, $actor, { value: this, configurable: true });
+}
+
 module.exports = class ChangeProxy {
-  #path;
+  #paths;
   #prop;
   #index;
   #emitter;
 
   constructor(obj, emitter, paths = []) {
-    this.#path = paths;
+    this.#paths = paths;
     this.#emitter = emitter;
     this.#index = { toString: () => this.#prop };
 
-    const state = this.#iterate(obj);
+    const state = Object.defineProperty(this.#iterate(obj), '$', { value: act });
 
     return new Proxy(state, {
       get: (target, prop, rec) => {
         this.#prop = prop;
-
+        const actor = target[$actor]; delete target[$actor];
         const value = Reflect.get(target, prop, state);
 
-        if (typeof value !== 'function' || typeof prop === 'symbol') return value;
+        if (value === act || typeof value !== 'function' || typeof prop === 'symbol') return value;
 
         return (...args) => {
           const retVal = value.apply(state, args);
 
           if (/^(push|pop|shift|unshift|splice|sort|reverse|add|set|clear|delete|remove)/.test(prop)) {
-            const path = this.#path.map(el => el.toString());
-            const event = { oldVal: target, newVal: target, path, apply: [prop, ...args] };
+            const path = this.#paths.map(el => el.toString());
+            const event = { actor, oldVal: target, newVal: target, path, apply: [prop, ...args] };
             this.#emitter.emit(target, event);
             this.#emitter.emit(path.join('/'), event, $pathmatch);
           }
@@ -35,21 +40,23 @@ module.exports = class ChangeProxy {
         };
       },
       set: (target, prop, newVal) => {
+        const actor = target[$actor]; delete target[$actor];
         const oldVal = target[prop];
-        const retVal = Reflect.set(target, prop, this.#resolve(this.#path.concat(prop), newVal));
-        const path = this.#path.concat(prop).map(el => el.toString());
-        const event = { oldVal, newVal, path };
-        this.#emitter.emit(target, event);
+        const retVal = Reflect.set(target, prop, this.#resolve(this.#paths.concat(prop), newVal));
+        const path = this.#paths.concat(prop).map(el => el.toString());
+        const event = { actor, oldVal, newVal, path };
         this.#emitter.emit(path.join('/'), event, $pathmatch);
+        this.#emitter.emit(target, event);
         return retVal;
       },
       deleteProperty: (target, prop, newVal) => {
+        const actor = target[$actor]; delete target[$actor];
         const oldVal = target[prop];
         const retVal = Reflect.deleteProperty(target, prop);
-        const path = this.#path.concat(prop).map(el => el.toString());
-        const event = { oldVal, newVal, path };
-        this.#emitter.emit(target, event);
+        const path = this.#paths.concat(prop).map(el => el.toString());
+        const event = { actor, oldVal, newVal, path };
         this.#emitter.emit(path.join('/'), event, $pathmatch);
+        this.#emitter.emit(target, event);
         return retVal;
       },
     });
@@ -57,7 +64,7 @@ module.exports = class ChangeProxy {
 
   #iterate(mixed) {
     return ChangeProxy.map(mixed, (value, i) => {
-      if (typeof value === 'object') return value === mixed ? this.#transform(value) : this.#resolve(this.#path.concat(this.#index), value);
+      if (typeof value === 'object') return value === mixed ? this.#transform(value) : this.#resolve(this.#paths.concat(this.#index), value);
       return value;
     });
   }
@@ -67,7 +74,7 @@ module.exports = class ChangeProxy {
   }
 
   #transform(obj) {
-    Object.entries(obj).forEach(([key, value]) => (obj[key] = this.#resolve(this.#path.concat(key), value)));
+    Object.entries(obj).forEach(([key, value]) => (obj[key] = this.#resolve(this.#paths.concat(key), value)));
     return obj;
   }
 
