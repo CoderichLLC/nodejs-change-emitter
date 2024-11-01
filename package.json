@@ -1,7 +1,7 @@
 {
-  "name": "@coderich/state-change",
+  "name": "@coderich/change-emitter",
   "version": "0.0.0",
-  "main": "src/State.js",
+  "main": "src/ChangeEmitter.js",
   "publishConfig": {
     "access": "public"
   },

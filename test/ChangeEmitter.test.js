@@ -4,6 +4,8 @@ describe('ChangeEmitter', () => {
   const { proxy, emitter } = new ChangeEmitter({
     turn: 0,
     nested: {
+      nullValue: null,
+      undefinedValue: undefined,
       attribute: 'value',
       deeply: { attribute: 'value' },
       array: [1, 'two', { three: 'three', four: 4, array: [1, 2, 3] }],
@@ -105,10 +107,10 @@ describe('ChangeEmitter', () => {
     }); Object.assign(proxy.nested, { attribute: 'changed', anotherAttribute: {} });
   });
 
-  test('Direct object', (done) => {
+  test('Direct object $id', (done) => {
     proxy.nested.hero = { hp: 10, ma: 10 };
 
-    emitter.once(proxy.nested.hero, (event) => {
+    emitter.once(proxy.nested.hero.$id, (event) => {
       expect(event).toEqual({ oldVal: 10, newVal: 20, path: ['nested', 'hero', 'hp'] });
       done();
     });

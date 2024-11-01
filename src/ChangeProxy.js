@@ -16,7 +16,10 @@ module.exports = class ChangeProxy {
     this.#emitter = emitter;
     this.#index = { toString: () => this.#prop };
 
-    const state = Object.defineProperty(this.#iterate(obj), '$', { value: act });
+    const state = Object.defineProperties(this.#iterate(obj), {
+      $: { value: act },
+      $id: { value: Symbol('id') },
+    });
 
     return new Proxy(state, {
       get: (target, prop, rec) => {
@@ -32,8 +35,8 @@ module.exports = class ChangeProxy {
           if (/^(push|pop|shift|unshift|splice|sort|reverse|add|set|clear|delete|remove)/.test(prop)) {
             const path = this.#paths.map(el => el.toString());
             const event = { actor, oldVal: target, newVal: target, path, apply: [prop, ...args] };
-            this.#emitter.emit(target, event);
             this.#emitter.emit(path.join('/'), event, $pathmatch);
+            this.#emitter.emit(state.$id, event);
           }
 
           return retVal;
@@ -46,7 +49,7 @@ module.exports = class ChangeProxy {
         const path = this.#paths.concat(prop).map(el => el.toString());
         const event = { actor, oldVal, newVal, path };
         this.#emitter.emit(path.join('/'), event, $pathmatch);
-        this.#emitter.emit(target, event);
+        this.#emitter.emit(state.$id, event);
         return retVal;
       },
       deleteProperty: (target, prop, newVal) => {
@@ -56,31 +59,26 @@ module.exports = class ChangeProxy {
         const path = this.#paths.concat(prop).map(el => el.toString());
         const event = { actor, oldVal, newVal, path };
         this.#emitter.emit(path.join('/'), event, $pathmatch);
-        this.#emitter.emit(target, event);
+        this.#emitter.emit(state.$id, event);
         return retVal;
       },
     });
   }
 
   #iterate(mixed) {
-    return ChangeProxy.map(mixed, (value, i) => {
-      if (typeof value === 'object') return value === mixed ? this.#transform(value) : this.#resolve(this.#paths.concat(this.#index), value);
-      return value;
-    });
+    if (mixed == null) return mixed;
+    if (Array.isArray(mixed)) return mixed.map(value => this.#resolve(this.#paths.concat(this.#index), value));
+    if (typeof mixed === 'object') return this.#transform(mixed);
+    return mixed;
   }
 
   #resolve(key, value) {
+    if (value == null) return value;
     return typeof value === 'object' ? new ChangeProxy(value, this.#emitter, key) : value;
   }
 
   #transform(obj) {
     Object.entries(obj).forEach(([key, value]) => (obj[key] = this.#resolve(this.#paths.concat(key), value)));
     return obj;
-  }
-
-  static map(mixed, fn) {
-    if (mixed == null) return mixed;
-    if (Array.isArray(mixed)) return mixed.map((...args) => fn(...args));
-    return fn(mixed);
   }
 };
