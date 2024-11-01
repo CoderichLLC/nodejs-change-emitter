@@ -15,6 +15,7 @@
     "dev": "coderich-dev"
   },
   "dependencies": {
+    "picomatch": "^4.0.2"
   },
   "devDependencies": {
     "@coderich/dev": "^0.3.3"
