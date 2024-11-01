@@ -1,4 +1,4 @@
-const EventEmitter = require('events');
+const EventEmitter = require('./EventEmitter');
 const ChangeProxy = require('./ChangeProxy');
 
 module.exports = class ChangeEmitter {

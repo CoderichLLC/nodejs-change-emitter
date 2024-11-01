@@ -1,4 +1,4 @@
-const $id = Symbol.for('id');
+const $pathmatch = Symbol.for('pathmatch');
 
 module.exports = class ChangeProxy {
   #path;
@@ -6,12 +6,12 @@ module.exports = class ChangeProxy {
   #index;
   #emitter;
 
-  constructor(obj, emitter, path = []) {
-    this.#path = path;
+  constructor(obj, emitter, paths = []) {
+    this.#path = paths;
     this.#emitter = emitter;
     this.#index = { toString: () => this.#prop };
 
-    const state = Object.defineProperty(this.#iterate(obj), $id, { value: Symbol('') });
+    const state = this.#iterate(obj);
 
     return new Proxy(state, {
       get: (target, prop, rec) => {
@@ -25,9 +25,10 @@ module.exports = class ChangeProxy {
           const retVal = value.apply(state, args);
 
           if (/^(push|pop|shift|unshift|splice|sort|reverse|add|set|clear|delete|remove)/.test(prop)) {
-            const event = { oldVal: target, newVal: target, path: this.#path.map(el => el.toString()), apply: [prop, ...args] };
-            this.#emitter.emit(target[$id], event);
-            this.#emitter.emit('change', event);
+            const path = this.#path.map(el => el.toString());
+            const event = { oldVal: target, newVal: target, path, apply: [prop, ...args] };
+            this.#emitter.emit(target, event);
+            this.#emitter.emit(path.join('/'), event, $pathmatch);
           }
 
           return retVal;
@@ -36,17 +37,19 @@ module.exports = class ChangeProxy {
       set: (target, prop, newVal) => {
         const oldVal = target[prop];
         const retVal = Reflect.set(target, prop, this.#resolve(this.#path.concat(prop), newVal));
-        const event = { oldVal, newVal, path: this.#path.concat(prop).map(el => el.toString()) };
-        this.#emitter.emit(target[$id], event);
-        this.#emitter.emit('change', event);
+        const path = this.#path.concat(prop).map(el => el.toString());
+        const event = { oldVal, newVal, path };
+        this.#emitter.emit(target, event);
+        this.#emitter.emit(path.join('/'), event, $pathmatch);
         return retVal;
       },
       deleteProperty: (target, prop, newVal) => {
         const oldVal = target[prop];
         const retVal = Reflect.deleteProperty(target, prop);
-        const event = { oldVal, newVal, path: this.#path.concat(prop).map(el => el.toString()) };
-        this.#emitter.emit(target[$id], event);
-        this.#emitter.emit('change', event);
+        const path = this.#path.concat(prop).map(el => el.toString());
+        const event = { oldVal, newVal, path };
+        this.#emitter.emit(target, event);
+        this.#emitter.emit(path.join('/'), event, $pathmatch);
         return retVal;
       },
     });
