@@ -16,4 +16,9 @@ module.exports = class PathEmitter extends EventEmitter {
       this.eventNames().filter(name => this.#matchMap.get(name)?.(path)).forEach(name => this.emit(name, event));
     });
   }
+
+  glob(pattern) {
+    this.#matchMap.set(pattern, PicoMatch(pattern));
+    return this;
+  }
 };
