@@ -11,7 +11,12 @@ describe('ChangeEmitter', () => {
       array: [1, 'two', { three: 'three', four: 4, array: [1, 2, 3] }],
       map: new Map(),
       date: new Date(),
+      // get getter() { return 'get me'; },
     },
+  });
+
+  test('Bug fixes', () => {
+    proxy.brandy = proxy.nested; // Creating new attribute pointing to existing proxy object
   });
 
   test('proxy.turn', (done) => {
@@ -35,6 +40,13 @@ describe('ChangeEmitter', () => {
       done();
     }); proxy.newAttribute = 5;
   });
+
+  // test('proxy.getter', (done) => {
+  //   emitter.once('nested/getter', (event) => {
+  //     expect(event).toEqual({ oldVal: 'get me', newVal: 'got me', path: ['nested', 'getter'] });
+  //     done();
+  //   }); proxy.nested.getter = 'got me';
+  // });
 
   test('proxy.nested.attribute', (done) => {
     emitter.once('nested/attribute', (event) => {
@@ -119,6 +131,8 @@ describe('ChangeEmitter', () => {
   });
 
   test('Actors', (done) => {
+    const { nested } = proxy;
+
     emitter.once('nested/attribute', (event) => {
       expect(event).toEqual({ actor: proxy.nested.deeply, oldVal: 'changed', newVal: 'acted', path: ['nested', 'attribute'] });
     }); proxy.nested.deeply.$(proxy.nested).attribute = 'acted';
@@ -126,6 +140,10 @@ describe('ChangeEmitter', () => {
     emitter.once('nested/attribute', (event) => {
       expect(event).toEqual({ oldVal: 'acted', newVal: 'boring', path: ['nested', 'attribute'] });
     }); proxy.nested.attribute = 'boring';
+
+    emitter.once('brand', (event) => {
+      expect(event).toEqual({ actor: nested, oldVal: undefined, newVal: 'new', path: ['brand'] });
+    }); nested.$(proxy).brand = 'new';
 
     emitter.once('nested/map', (event) => {
       expect(event).toEqual({ actor: proxy.nested.date, oldVal: expect.any(Map), newVal: expect.any(Map), path: ['nested', 'map'], apply: ['set', 'actor', 'date'] });

@@ -40,5 +40,6 @@ module.exports = {
     'no-return-assign': ['error', 'except-parens'],
     'no-unused-vars': ['error', { args: 'none' }],
     'object-curly-newline': ['error', { minProperties: 0, consistent: true }],
+    'prefer-destructuring': 'off',
   },
 };

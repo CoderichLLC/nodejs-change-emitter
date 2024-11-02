@@ -1,4 +1,6 @@
+const proto = {};
 const $actor = Symbol('actor');
+const $toObject = Symbol('toObject');
 const $pathmatch = Symbol.for('pathmatch');
 
 function act(o) {
@@ -16,36 +18,45 @@ module.exports = class ChangeProxy {
     this.#emitter = emitter;
     this.#index = { toString: () => this.#prop };
 
-    const state = Object.defineProperties(this.#iterate(obj), {
+    // Circular references are possible
+    const state = obj[$toObject] ? obj[$toObject]() : Object.defineProperties(this.#iterate(obj), {
       $: { value: act },
       $id: { value: Symbol('id') },
+      [$toObject]: { value: () => obj },
     });
+
+    // const state = Object.getPrototypeOf(obj) === proto ? obj[$toObject]() : Object.defineProperties(this.#iterate(obj), {
+    //   $: { value: act },
+    //   $id: { value: Symbol('id') },
+    //   $toObject: { value: () => obj },
+    // });
 
     return new Proxy(state, {
       get: (target, prop, rec) => {
         this.#prop = prop;
-        const actor = target[$actor]; delete target[$actor];
         const value = Reflect.get(target, prop, state);
 
         if (value === act || typeof value !== 'function' || typeof prop === 'symbol') return value;
 
         return (...args) => {
-          const retVal = value.apply(state, args);
-
           if (/^(push|pop|shift|unshift|splice|sort|reverse|add|set|clear|delete|remove)/.test(prop)) {
+            const retVal = value.apply(state, this.#resolve(this.#paths, args));
+            const actor = target[$actor]; delete target[$actor];
             const path = this.#paths.map(el => el.toString());
             const event = { actor, oldVal: target, newVal: target, path, apply: [prop, ...args] };
             this.#emitter.emit(path.join('/'), event, $pathmatch);
             this.#emitter.emit(state.$id, event);
+            return retVal;
           }
 
-          return retVal;
+          return value.apply(state, args);
         };
       },
-      set: (target, prop, newVal) => {
+      set: (target, prop, value) => {
         const actor = target[$actor]; delete target[$actor];
         const oldVal = target[prop];
-        const retVal = Reflect.set(target, prop, this.#resolve(this.#paths.concat(prop), newVal));
+        const retVal = Reflect.set(target, prop, this.#resolve(this.#paths.concat(prop), value));
+        const newVal = target[prop];
         const path = this.#paths.concat(prop).map(el => el.toString());
         const event = { actor, oldVal, newVal, path };
         this.#emitter.emit(path.join('/'), event, $pathmatch);
@@ -61,6 +72,9 @@ module.exports = class ChangeProxy {
         this.#emitter.emit(path.join('/'), event, $pathmatch);
         this.#emitter.emit(state.$id, event);
         return retVal;
+      },
+      getPrototypeOf: () => {
+        return proto;
       },
     });
   }
