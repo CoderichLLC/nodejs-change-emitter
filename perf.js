@@ -18,12 +18,12 @@ const { emitter, proxy: largeNestedObject } = new ChangeEmitter({
 
 emitter.setMaxListeners(100);
 
-Array.from(new Array(1)).forEach(() => {
-  emitter.on('**', () => {
-  });
-});
-
 console.time('Populate Large Object');
+const listener = () => null;
+
+Array.from(new Array(1)).forEach(() => {
+  emitter.on('**', listener);
+});
 
 // Populate large arrays
 for (let i = 0; i < 10000; i++) {

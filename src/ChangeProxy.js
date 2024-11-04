@@ -1,6 +1,5 @@
 const proto = {};
 const $actor = Symbol('actor');
-const $toObject = Symbol('toObject');
 const $pathmatch = Symbol.for('pathmatch');
 
 function act(o) {
@@ -9,41 +8,32 @@ function act(o) {
 
 module.exports = class ChangeProxy {
   #paths;
-  #prop;
-  #index;
   #emitter;
 
   constructor(obj, emitter, paths = []) {
+    if (Object.getPrototypeOf(obj) === proto) return obj;
+
     this.#paths = paths;
     this.#emitter = emitter;
-    this.#index = { toString: () => this.#prop };
 
-    // Circular references are possible
-    const state = obj[$toObject] ? obj[$toObject]() : Object.defineProperties(this.#iterate(obj), {
+    const state = Object.defineProperties(this.#iterate(obj), {
       $: { value: act },
       $id: { value: Symbol('id') },
-      [$toObject]: { value: () => obj },
     });
-
-    // const state = Object.getPrototypeOf(obj) === proto ? obj[$toObject]() : Object.defineProperties(this.#iterate(obj), {
-    //   $: { value: act },
-    //   $id: { value: Symbol('id') },
-    //   $toObject: { value: () => obj },
-    // });
 
     return new Proxy(state, {
       get: (target, prop, rec) => {
-        this.#prop = prop;
         const value = Reflect.get(target, prop, state);
 
         if (value === act || typeof value !== 'function' || typeof prop === 'symbol') return value;
 
         return (...args) => {
           if (/^(push|pop|shift|unshift|splice|sort|reverse|add|set|clear|delete|remove)/.test(prop)) {
-            const retVal = value.apply(state, this.#resolve(this.#paths, args));
+            args = this.#iterate(args);
+            const retVal = value.apply(state, args);
             const actor = target[$actor]; delete target[$actor];
             const path = this.#paths.map(el => el.toString());
-            const event = { actor, oldVal: target, newVal: target, path, apply: [prop, ...args] };
+            const event = { actor, target: rec, oldVal: target, newVal: target, path, apply: [prop, ...args] };
             this.#emitter.emit(path.join('/'), event, $pathmatch);
             this.#emitter.emit(state.$id, event);
             return retVal;
@@ -52,13 +42,13 @@ module.exports = class ChangeProxy {
           return value.apply(state, args);
         };
       },
-      set: (target, prop, value) => {
+      set: (target, prop, value, rec) => {
         const actor = target[$actor]; delete target[$actor];
         const oldVal = target[prop];
         const retVal = Reflect.set(target, prop, this.#resolve(this.#paths.concat(prop), value));
         const newVal = target[prop];
         const path = this.#paths.concat(prop).map(el => el.toString());
-        const event = { actor, oldVal, newVal, path };
+        const event = { actor, target: rec, oldVal, newVal, path };
         this.#emitter.emit(path.join('/'), event, $pathmatch);
         this.#emitter.emit(state.$id, event);
         return retVal;
@@ -68,7 +58,7 @@ module.exports = class ChangeProxy {
         const oldVal = target[prop];
         const retVal = Reflect.deleteProperty(target, prop);
         const path = this.#paths.concat(prop).map(el => el.toString());
-        const event = { actor, oldVal, newVal, path };
+        const event = { actor, target, oldVal, newVal, path };
         this.#emitter.emit(path.join('/'), event, $pathmatch);
         this.#emitter.emit(state.$id, event);
         return retVal;
@@ -81,7 +71,6 @@ module.exports = class ChangeProxy {
 
   #iterate(mixed) {
     if (mixed == null) return mixed;
-    if (Array.isArray(mixed)) return mixed.map(value => this.#resolve(this.#paths.concat(this.#index), value));
     if (typeof mixed === 'object') return this.#transform(mixed);
     return mixed;
   }
@@ -92,7 +81,15 @@ module.exports = class ChangeProxy {
   }
 
   #transform(obj) {
-    Object.entries(obj).forEach(([key, value]) => (obj[key] = this.#resolve(this.#paths.concat(key), value)));
+    if (Array.isArray(obj)) {
+      obj.forEach((el, i) => {
+        const $el = this.#resolve(this.#paths.concat({ toString: () => obj.indexOf($el) }), el);
+        obj[i] = $el;
+      });
+    } else {
+      Object.entries(obj).forEach(([key, value]) => (obj[key] = this.#resolve(this.#paths.concat(key), value)));
+    }
+
     return obj;
   }
 };
