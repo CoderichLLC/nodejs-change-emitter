@@ -90,7 +90,7 @@ function modifyDeeply(obj) {
         levelArray.push({
           text: `Level ${levelCounter} - New Item ${i}`,
           number: i,
-          func: () => `Level ${levelCounter} - New Func ${i}`
+          func: () => `Level ${levelCounter} - New Func ${i}`,
         });
 
         // Remove some items from the array

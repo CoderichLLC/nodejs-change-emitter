@@ -16,13 +16,14 @@ module.exports = class ChangeProxy {
     this.#paths = paths;
     this.#emitter = emitter;
 
-    const state = Object.defineProperties(this.#iterate(obj), {
-      $: { value: act },
-      $id: { value: Symbol('id') },
-    });
+    const id = Symbol('id');
+    const state = this.#iterate(obj);
 
     return new Proxy(state, {
       get: (target, prop, rec) => {
+        if (prop === '$') return act;
+        if (prop === '$id') return id;
+
         const value = Reflect.get(target, prop, state);
 
         if (value === act || typeof value !== 'function' || typeof prop === 'symbol') return value;
@@ -35,7 +36,7 @@ module.exports = class ChangeProxy {
             const path = this.#paths.map(el => el.toString());
             const event = { actor, target: rec, oldVal: target, newVal: target, path, apply: [prop, ...args] };
             this.#emitter.emit(path.join('/'), event, $pathmatch);
-            this.#emitter.emit(state.$id, event);
+            this.#emitter.emit(id, event);
             return retVal;
           }
 
@@ -50,7 +51,18 @@ module.exports = class ChangeProxy {
         const path = this.#paths.concat(prop).map(el => el.toString());
         const event = { actor, target: rec, oldVal, newVal, path };
         this.#emitter.emit(path.join('/'), event, $pathmatch);
-        this.#emitter.emit(state.$id, event);
+        this.#emitter.emit(id, event);
+        return retVal;
+      },
+      defineProperty: (target, prop, descriptor) => {
+        const actor = target[$actor]; delete target[$actor];
+        const oldVal = target[prop];
+        const retVal = Reflect.defineProperty(target, prop, descriptor);
+        const newVal = target[prop];
+        const path = this.#paths.concat(prop).map(el => el.toString());
+        const event = { actor, target, oldVal, newVal, path };
+        this.#emitter.emit(path.join('/'), event, $pathmatch);
+        this.#emitter.emit(id, event);
         return retVal;
       },
       deleteProperty: (target, prop, newVal) => {
@@ -60,7 +72,7 @@ module.exports = class ChangeProxy {
         const path = this.#paths.concat(prop).map(el => el.toString());
         const event = { actor, target, oldVal, newVal, path };
         this.#emitter.emit(path.join('/'), event, $pathmatch);
-        this.#emitter.emit(state.$id, event);
+        this.#emitter.emit(id, event);
         return retVal;
       },
       getPrototypeOf: () => {
@@ -87,7 +99,13 @@ module.exports = class ChangeProxy {
         obj[i] = $el;
       });
     } else {
-      Object.entries(obj).forEach(([key, value]) => (obj[key] = this.#resolve(this.#paths.concat(key), value)));
+      Object.entries(obj).forEach(([key, value]) => {
+        try {
+          obj[key] = this.#resolve(this.#paths.concat(key), value);
+        } catch (e) {
+          console.warn(e.message);
+        }
+      });
     }
 
     return obj;

@@ -1,7 +1,9 @@
 const ChangeEmitter = require('../src/ChangeEmitter');
 
 describe('ChangeEmitter', () => {
+  let getset = 'get me';
   const target = expect.any(Object);
+  const commonArr = ['a', 'b', 'c'];
 
   const { proxy, emitter } = new ChangeEmitter({
     turn: 0,
@@ -11,21 +13,17 @@ describe('ChangeEmitter', () => {
       attribute: 'value',
       deeply: { attribute: 'value' },
       array: [1, 'two', { three: 'three', four: 4, array: [1, 2, 3] }],
+      dupes: [commonArr, commonArr, commonArr],
       toSplice: [{ name: 'a', hp: 1 }, { name: 'b', hp: 1 }, { name: 'c', hp: 1 }],
       map: new Map(),
       date: new Date(),
-      // get getter() { return 'get me'; },
+      get getter() { return getset; },
+      set getter(v) { getset = v; },
     },
   });
 
   test('Bug fixes', () => {
     proxy.brandy = proxy.nested; // Creating new attribute pointing to existing proxy object
-    // let listener;
-    // emitter.on('nested/toSplice/*/hp', listener = ({ path }) => {
-    //   proxy.nested.toSplice.splice(path.at(2), 1);
-    // });
-    // proxy.nested.toSplice
-    // listener.off('nested/toSplice/*/hp');
   });
 
   test('proxy.turn', (done) => {
@@ -46,16 +44,20 @@ describe('ChangeEmitter', () => {
   test('proxy.newAttribute', (done) => {
     emitter.once('newAttribute', (event) => {
       expect(event).toEqual({ target, oldVal: undefined, newVal: 5, path: ['newAttribute'] });
-      done();
     }); proxy.newAttribute = 5;
+
+    emitter.once('definedProp', (event) => {
+      expect(event).toEqual({ target, oldVal: undefined, newVal: 1, path: ['definedProp'] });
+      done();
+    }); Object.defineProperty(proxy, 'definedProp', { value: 1 });
   });
 
-  // test('proxy.getter', (done) => {
-  //   emitter.once('nested/getter', (event) => {
-  //     expect(event).toEqual({ oldVal: 'get me', newVal: 'got me', path: ['nested', 'getter'] });
-  //     done();
-  //   }); proxy.nested.getter = 'got me';
-  // });
+  test('proxy.getter', (done) => {
+    emitter.once('nested/getter', (event) => {
+      expect(event).toEqual({ target, oldVal: 'get me', newVal: 'got me', path: ['nested', 'getter'] });
+      done();
+    }); proxy.nested.getter = 'got me';
+  });
 
   test('proxy.nested.attribute', (done) => {
     emitter.once('nested/attribute', (event) => {
@@ -97,8 +99,12 @@ describe('ChangeEmitter', () => {
 
     emitter.once('**', (event) => {
       expect(event).toEqual({ target, oldVal: 3, newVal: '3', path: ['nested', 'array', 1, 'array', '2'] });
-      done();
     }); proxy.nested.array[1].array[2] = '3';
+
+    emitter.once('**', (event) => {
+      expect(event).toEqual({ target, oldVal: 'c', newVal: 'duece', path: ['nested', 'dupes', 2, '2'] });
+      done();
+    }); proxy.nested.dupes[2][2] = 'duece';
   });
 
   test('proxy.nested.{map|date} functions', (done) => {
@@ -138,9 +144,17 @@ describe('ChangeEmitter', () => {
     emitter.once(proxy.nested.hero.$id, (event) => {
       expect(event).toEqual({ target, oldVal: 10, newVal: 20, path: ['nested', 'hero', 'hp'] });
       done();
-    });
+    }); proxy.nested.hero.hp = 20;
+  });
 
-    proxy.nested.hero.hp = 20;
+  test.skip('Reparented proxy', (done) => {
+    const [p] = proxy.nested.dupes;
+    const index = proxy.nested.array.push(p) - 1;
+
+    emitter.once(p.$id, (event) => {
+      expect(event).toEqual({ target, oldVal: 'b', newVal: 'one', path: ['nested', 'array', index, '1'] });
+      done();
+    }); proxy.nested.array[index][1] = 'one';
   });
 
   test('Actors', (done) => {
